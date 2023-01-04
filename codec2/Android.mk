@@ -20,10 +20,10 @@ include $(CLEAR_VARS)
 include $(SF_COMMON_MK)
 LOCAL_MODULE := android.hardware.media.c2@1.1-ffmpeg-service
 LOCAL_MODULE_RELATIVE_PATH := hw
-LOCAL_VINTF_FRAGMENTS := manifest_media_c2_V1_1_ffmpeg.xml
 LOCAL_INIT_RC := android.hardware.media.c2@1.1-ffmpeg-service.rc
 LOCAL_REQUIRED_MODULES := \
 	android.hardware.media.c2@1.1-ffmpeg.policy \
+	manifest_media_c2_V1_1_ffmpeg.xml \
 	media_codecs_ffmpeg_c2.xml
 LOCAL_SRC_FILES := \
 	C2FFMPEGAudioDecodeComponent.cpp \
@@ -67,4 +67,14 @@ LOCAL_MODULE := media_codecs_ffmpeg_c2.xml
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE_CLASS := ETC
 LOCAL_SRC_FILES := media_codecs_ffmpeg_c2.xml
+include $(BUILD_PREBUILT)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := manifest_media_c2_V1_1_ffmpeg.xml
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_CLASS := ETC
+LOCAL_MODULE_RELATIVE_PATH := hidden_xml
+LOCAL_SRC_FILES := manifest_media_c2_V1_1_ffmpeg.xml
+LOCAL_POST_INSTALL_CMD := mkdir -p $(TARGET_OUT_VENDOR)/etc/vintf/manifest;
+LOCAL_POST_INSTALL_CMD += cp $(LOCAL_PATH)/manifest_media_c2_V1_1_ffmpeg.fake.xml $(TARGET_OUT_VENDOR)/etc/vintf/manifest/manifest_media_c2_V1_1_ffmpeg.xml
 include $(BUILD_PREBUILT)
