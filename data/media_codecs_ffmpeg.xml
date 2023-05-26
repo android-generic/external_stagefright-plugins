@@ -88,31 +88,51 @@
         <MediaCodec name="OMX.ffmpeg.mpeg4.decoder"  type="video/mp4v-es">
             <Limit name="size" min="2x2" max="2048x2048" />
             <Limit name="alignment" value="2x2" />
+            <Limit name="block-size" value="16x16" />
+            <Limit name="blocks-per-second" range="12-11880" />
+            <Limit name="bitrate" range="1-384000" />
             <Feature name="adaptive-playback" />
         </MediaCodec>
         <MediaCodec name="OMX.ffmpeg.h263.decoder"   type="video/3gpp">
             <Limit name="size" min="2x2" max="2048x2048" />
             <Limit name="alignment" value="2x2" />
+            <Limit name="bitrate" range="1-384000" />
             <Feature name="adaptive-playback" />
         </MediaCodec>
         <MediaCodec name="OMX.ffmpeg.h264.decoder"   type="video/avc">
             <Limit name="size" min="2x2" max="4080x4080" />
             <Limit name="alignment" value="2x2" />
+            <Limit name="block-size" value="16x16" />
+            <Limit name="block-count" range="1-32768" /> <!-- max 4096x2048 equivalent -->
+            <Limit name="blocks-per-second" range="1-1966080" />
+            <Limit name="bitrate" range="1-48000000" />
             <Feature name="adaptive-playback" />
         </MediaCodec>
         <MediaCodec name="OMX.ffmpeg.hevc.decoder"   type="video/hevc">
             <Limit name="size" min="2x2" max="4096x4096" />
             <Limit name="alignment" value="2x2" />
+            <Limit name="block-size" value="8x8" />
+            <Limit name="block-count" range="1-196608" /> <!-- max 4096x3072 -->
+            <Limit name="blocks-per-second" range="1-2000000" />
+            <Limit name="bitrate" range="1-10000000" />
             <Feature name="adaptive-playback" />
         </MediaCodec>
         <MediaCodec name="OMX.ffmpeg.vp8.decoder" type="video/x-vnd.on2.vp8">
             <Limit name="size" min="2x2" max="2048x2048" />
             <Limit name="alignment" value="2x2" />
+            <Limit name="block-size" value="16x16" />
+            <Limit name="block-count" range="1-16384" />
+            <Limit name="blocks-per-second" range="1-1000000" />
+            <Limit name="bitrate" range="1-40000000" />
             <Feature name="adaptive-playback" />
         </MediaCodec>
         <MediaCodec name="OMX.ffmpeg.vp9.decoder" type="video/x-vnd.on2.vp9">
             <Limit name="size" min="2x2" max="2048x2048" />
             <Limit name="alignment" value="2x2" />
+            <Limit name="block-size" value="16x16" />
+            <Limit name="block-count" range="1-16384" />
+            <Limit name="blocks-per-second" range="1-500000" />
+            <Limit name="bitrate" range="1-40000000" />
             <Feature name="adaptive-playback" />
         </MediaCodec>
         <MediaCodec name="OMX.ffmpeg.rv.decoder"     type="video/vnd.rn-realvideo">

@@ -60,7 +60,7 @@ C2FFMPEGVideoDecodeInterface::C2FFMPEGVideoDecodeInterface(
     if (strcasecmp(componentInfo->mediaType, MEDIA_MIMETYPE_VIDEO_MPEG2) == 0) {
         addParameter(
                 DefineParam(mActualOutputDelay, C2_PARAMKEY_OUTPUT_DELAY)
-                .withConstValue(new C2PortActualDelayTuning::output(3u))
+                .withConstValue(new C2PortActualDelayTuning::output(8u))
                 .build());
 
         addParameter(
@@ -202,8 +202,10 @@ C2FFMPEGVideoDecodeInterface::C2FFMPEGVideoDecodeInterface(
 
     addParameter(
             DefineParam(mPixelFormat, C2_PARAMKEY_PIXEL_FORMAT)
-            .withConstValue(new C2StreamPixelFormatInfo::output(
+            .withDefault(new C2StreamPixelFormatInfo::output(
                                  0u, HAL_PIXEL_FORMAT_YV12))
+            .withFields({C2F(mPixelFormat, value).any()})
+            .withSetter(Setter<decltype(*mPixelFormat)>::StrictValueWithNoDeps)
             .build());
 
     addParameter(

@@ -34,6 +34,7 @@ LOCAL_SRC_FILES := \
 LOCAL_SHARED_LIBRARIES := \
 	android.hardware.media.c2@1.1 \
 	libavcodec \
+	libavfilter \
 	libavutil \
 	libavservices_minijail \
 	libbase \
@@ -48,6 +49,9 @@ LOCAL_SHARED_LIBRARIES := \
 	libswresample \
 	libswscale \
 	libutils
+ifeq ($(CONFIG_VAAPI),yes)
+LOCAL_SHARED_LIBRARIES += libva
+endif
 include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)
