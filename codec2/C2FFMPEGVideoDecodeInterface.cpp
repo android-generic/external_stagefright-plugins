@@ -51,8 +51,8 @@ C2FFMPEGVideoDecodeInterface::C2FFMPEGVideoDecodeInterface(
             DefineParam(mSize, C2_PARAMKEY_PICTURE_SIZE)
             .withDefault(new C2StreamPictureSizeInfo::output(0u, 320, 240))
             .withFields({
-                C2F(mSize, width).inRange(16, kMaxDimension, 2),
-                C2F(mSize, height).inRange(16, kMaxDimension, 2),
+                C2F(mSize, width).inRange(2, kMaxDimension),
+                C2F(mSize, height).inRange(2, kMaxDimension),
             })
             .withSetter(SizeSetter)
             .build());
