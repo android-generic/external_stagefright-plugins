@@ -22,7 +22,6 @@ LOCAL_SHARED_LIBRARIES += \
 	libstagefright_softomx \
 	libutils
 
-LOCAL_MODULE := libffmpeg_omx
-LOCAL_MULTILIB := 32
+LOCAL_MODULE:= libffmpeg_omx
 
 include $(BUILD_SHARED_LIBRARY)
