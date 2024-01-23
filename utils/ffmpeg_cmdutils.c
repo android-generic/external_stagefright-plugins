@@ -22,8 +22,8 @@ void print_error(const char *filename, int err)
 double get_rotation(AVStream *st)
 {
     AVDictionaryEntry *rotate_tag = av_dict_get(st->metadata, "rotate", NULL, 0);
-    uint8_t* displaymatrix = av_stream_get_side_data(st,
-                                                     AV_PKT_DATA_DISPLAYMATRIX, NULL);
+    const AVPacketSideData *displaymatrix = av_packet_side_data_get(st->codecpar->coded_side_data,
+                                                    st->codecpar->nb_coded_side_data,AV_PKT_DATA_DISPLAYMATRIX);
     double theta = 0;
 
     if (rotate_tag && *rotate_tag->value && strcmp(rotate_tag->value, "0")) {
