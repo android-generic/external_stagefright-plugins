@@ -770,7 +770,7 @@ int32_t SoftFFmpegVideo::drainOneOutputBuffer() {
     outHeader->nOffset = 0;
     outHeader->nFilledLen = (bufferWidth * bufferHeight * 3) / 2;
     outHeader->nFlags = 0;
-    if (mFrame->key_frame) {
+    if (mFrame->flags & AV_FRAME_FLAG_KEY) {
         outHeader->nFlags |= OMX_BUFFERFLAG_SYNCFRAME;
     }
 
