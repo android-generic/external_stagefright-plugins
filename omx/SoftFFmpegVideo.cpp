@@ -763,7 +763,7 @@ int32_t SoftFFmpegVideo::drainOneOutputBuffer() {
     outHeader->nOffset = 0;
     outHeader->nFilledLen = (bufferWidth * bufferHeight * 3) / 2;
     outHeader->nFlags = 0;
-    if (mFrame->key_frame) {
+    if (mFrame->flags & AV_FRAME_FLAG_KEY) {
         outHeader->nFlags |= OMX_BUFFERFLAG_SYNCFRAME;
     }
 
@@ -976,9 +976,6 @@ void SoftFFmpegVideo::onReset() {
 SoftOMXComponent* SoftFFmpegVideo::createSoftOMXComponent(
         const char *name, const OMX_CALLBACKTYPE *callbacks,
         OMX_PTR appData, OMX_COMPONENTTYPE **component) {
-
-    if (property_get_bool("debug.ffmpeg-omx.disable", 1))
-        return NULL;
 
     OMX_VIDEO_CODINGTYPE codingType = OMX_VIDEO_CodingAutoDetect;
     const char *componentRole = NULL;

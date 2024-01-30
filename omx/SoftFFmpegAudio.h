@@ -29,6 +29,7 @@
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libswresample/swresample.h>
+#include <libavutil/mem_internal.h>
 }
 
 #include <OMX_Audio.h>

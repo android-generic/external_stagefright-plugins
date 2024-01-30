@@ -507,8 +507,8 @@ c2_status_t C2FFMPEGVideoDecodeComponent::receiveFrame(bool* hasPicture) {
         // interlace status to change mid-stream, but there has been instances of progressive
         // streams with sporadic interlaced frames. After the initial period, the interlace
         // status is frozen.
-        if (mCtx->frame_number <= 30) {
-            mDeinterlaceIndicator += (mFrame->interlaced_frame ? 1 : -1);
+        if (mCtx->frame_num <= 30) {
+            mDeinterlaceIndicator += (mFrame->flags & AV_FRAME_FLAG_INTERLACED ? 1 : -1);
 #if DEBUG_FRAMES
             ALOGD("receiveFrame: deinterlace indicator = %d", mDeinterlaceIndicator);
 #endif
