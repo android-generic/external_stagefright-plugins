@@ -216,17 +216,9 @@ void C2FFMPEGVideoDecodeComponent::deInitDecoder() {
             deInitDecoderVAAPI();
         }
 #endif
-        if (mCtx->extradata) {
-            av_free(mCtx->extradata);
-            mCtx->extradata = NULL;
-            mCtx->extradata_size = 0;
-        }
-        if (mCodecAlreadyOpened) {
-            avcodec_close(mCtx);
-            mCodecAlreadyOpened = false;
-        }
         ffmpeg_hwaccel_deinit(mCtx);
-        av_freep(&mCtx);
+        avcodec_free_context(&mCtx);
+        mCodecAlreadyOpened = false;
     }
     if (mFrame) {
         av_frame_free(&mFrame);
@@ -507,8 +499,8 @@ c2_status_t C2FFMPEGVideoDecodeComponent::receiveFrame(bool* hasPicture) {
         // interlace status to change mid-stream, but there has been instances of progressive
         // streams with sporadic interlaced frames. After the initial period, the interlace
         // status is frozen.
-        if (mCtx->frame_number <= 30) {
-            mDeinterlaceIndicator += (mFrame->interlaced_frame ? 1 : -1);
+        if (mCtx->frame_num <= 30) {
+            mDeinterlaceIndicator += ((mFrame->flags & AV_FRAME_FLAG_INTERLACED) != 0 ? 1 : -1);
 #if DEBUG_FRAMES
             ALOGD("receiveFrame: deinterlace indicator = %d", mDeinterlaceIndicator);
 #endif
@@ -1354,9 +1346,10 @@ extern "C" struct VAAPIHWContextType {
 };
 
 static void freeVAAPIHWContextType(AVHWDeviceContext* ctx) {
-    const VAAPIHWContextType* type = (VAAPIHWContextType*)ctx->internal->hw_type;
+    FFHWDeviceContext* ctx_internal = (FFHWDeviceContext*)ctx;
+    const VAAPIHWContextType* type = (VAAPIHWContextType*)ctx_internal->hw_type;
 
-    ctx->internal->hw_type = type->parent_hw_type;
+    ctx_internal->hw_type = type->parent_hw_type;
     ctx->free = type->parent_free;
     ctx->free(ctx);
     av_freep(&type);
@@ -1370,22 +1363,24 @@ static int framesInit(AVHWFramesContext* ctx) {
 
 void C2FFMPEGVideoDecodeComponent::openDecoderVAAPI() {
     AVHWDeviceContext* device_ctx = (AVHWDeviceContext*)mCtx->hw_device_ctx->data;
+    FFHWDeviceContext* device_ctx_internal = (FFHWDeviceContext*)device_ctx;
     VAAPIHWContextType* type = (VAAPIHWContextType*)av_mallocz(sizeof(VAAPIHWContextType));
 
-    type->hw_type = *device_ctx->internal->hw_type;
+    type->hw_type = *device_ctx_internal->hw_type;
     type->hw_type.frames_get_buffer = framesGetBufferVAAPI;
     type->hw_type.frames_init = framesInit;
     type->hw_type.frames_uninit = NULL;
-    type->parent_hw_type = device_ctx->internal->hw_type;
+    type->parent_hw_type = device_ctx_internal->hw_type;
     type->parent_free = device_ctx->free;
     type->component = this;
 
-    device_ctx->internal->hw_type = &type->hw_type;
+    device_ctx_internal->hw_type = &type->hw_type;
     device_ctx->free = freeVAAPIHWContextType;
 }
 
 int C2FFMPEGVideoDecodeComponent::framesGetBufferVAAPI(AVHWFramesContext* ctx, AVFrame* frame) {
-    const VAAPIHWContextType* type = (VAAPIHWContextType*)ctx->device_ctx->internal->hw_type;
+    const FFHWDeviceContext* device_ctx_internal = (FFHWDeviceContext*)ctx->device_ctx;
+    const VAAPIHWContextType* type = (VAAPIHWContextType*)device_ctx_internal->hw_type;
     return type->component->getBufferVAAPI(ctx, frame);
 }
 
