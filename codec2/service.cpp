@@ -15,13 +15,10 @@
  */
 
 //#define LOG_NDEBUG 0
-#define LOG_TAG "android.hardware.media.c2@1.2-service"
+#define LOG_TAG "android.hardware.media.c2-ffmpeg-service"
 
 #include <android-base/logging.h>
 #include <android-base/properties.h>
-#include <binder/ProcessState.h>
-#include <codec2/hidl/1.2/ComponentStore.h>
-#include <hidl/HidlTransportSupport.h>
 #include <media/stagefright/foundation/MediaDefs.h>
 #include <minijail.h>
 
@@ -29,25 +26,42 @@
 #include <C2Component.h>
 #include <C2Config.h>
 
+// HIDL
+#include <binder/ProcessState.h>
+#include <codec2/hidl/1.2/ComponentStore.h>
+#include <hidl/HidlTransportSupport.h>
+
+// AIDL
+#include <android/binder_manager.h>
+#include <android/binder_process.h>
+#include <codec2/aidl/ComponentStore.h>
+#include <codec2/aidl/ParamTypes.h>
+
 #include "C2FFMPEGCommon.h"
 #include "C2FFMPEGAudioDecodeComponent.h"
 #include "C2FFMPEGAudioDecodeInterface.h"
 #include "C2FFMPEGVideoDecodeComponent.h"
 #include "C2FFMPEGVideoDecodeInterface.h"
 
-namespace android {
-
 // This is the absolute on-device path of the prebuild_etc module
-// "android.hardware.media.c2@1.1-ffmpeg-seccomp_policy" in Android.bp.
+// "android.hardware.media.c2-ffmpeg-seccomp_policy" in Android.bp.
 static constexpr char kBaseSeccompPolicyPath[] =
         "/vendor/etc/seccomp_policy/"
-        "android.hardware.media.c2@1.2-ffmpeg.policy";
+        "android.hardware.media.c2-ffmpeg.policy";
 
 // Additional seccomp permissions can be added in this file.
 // This file does not exist by default.
 static constexpr char kExtSeccompPolicyPath[] =
         "/vendor/etc/seccomp_policy/"
-        "android.hardware.media.c2@1.2-ffmpeg-extended.policy";
+        "android.hardware.media.c2-ffmpeg-extended.policy";
+
+// We want multiple threads to be running so that a blocking operation
+// on one codec does not block the other codecs.
+// For HIDL: Extra threads may be needed to handle a stacked IPC sequence that
+// contains alternating binder and hwbinder calls. (See b/35283480.)
+static constexpr int kThreadCount = 8;
+
+namespace android {
 
 static const C2FFMPEGComponentInfo kFFMPEGVideoComponents[] = {
     { "c2.ffmpeg.divx.decoder"  , MEDIA_MIMETYPE_VIDEO_DIVX  , AV_CODEC_ID_MPEG4      },
@@ -262,8 +276,8 @@ private:
                 .withFields({
                     C2F(mDmaBufUsageInfo, m.usage).flags({C2MemoryUsage::CPU_READ | C2MemoryUsage::CPU_WRITE}),
                     C2F(mDmaBufUsageInfo, m.capacity).inRange(0, UINT32_MAX, 1024),
-                    C2F(mDmaBufUsageInfo, m.heapName).any(),
                     C2F(mDmaBufUsageInfo, m.allocFlags).flags({}),
+                    C2F(mDmaBufUsageInfo, m.heapName).any(),
                 })
                 .withSetter(SetDmaBufUsage)
                 .build());
@@ -297,18 +311,48 @@ private:
 
 } // namespace android
 
-int main(int /* argc */, char** /* argv */) {
+void runAidlService() {
     using namespace ::android;
-    LOG(DEBUG) << "android.hardware.media.c2@1.2-service starting...";
 
-    // Set up minijail to limit system calls.
-    signal(SIGPIPE, SIG_IGN);
-    SetUpMinijail(kBaseSeccompPolicyPath, kExtSeccompPolicyPath);
+    ABinderProcess_setThreadPoolMaxThreadCount(kThreadCount);
+    ABinderProcess_startThreadPool();
+
+    // Create IComponentStore service.
+    using namespace ::aidl::android::hardware::media::c2;
+    std::shared_ptr<IComponentStore> store;
+
+    // TODO: Replace this with
+    // store = new utils::ComponentStore(
+    //         /* implementation of C2ComponentStore */);
+    LOG(DEBUG) << "Instantiating Codec2's IComponentStore service...";
+    store = ::ndk::SharedRefBase::make<utils::ComponentStore>(
+            std::make_shared<StoreImpl>());
+
+    if (store == nullptr) {
+        LOG(ERROR) << "Cannot create Codec2's IComponentStore service.";
+    } else {
+        const std::string serviceName =
+            std::string(IComponentStore::descriptor) + "/ffmpeg";
+        binder_exception_t ex = AServiceManager_addService(
+                store->asBinder().get(), serviceName.c_str());
+        if (ex != EX_NONE) {
+            LOG(ERROR) << "Cannot register Codec2's IComponentStore service"
+                          " with instance name << \""
+                       << serviceName << "\".";
+        } else {
+            LOG(DEBUG) << "Codec2's IComponentStore service registered. "
+                          "Instance name: \"" << serviceName << "\".";
+        }
+    }
+
+    ABinderProcess_joinThreadPool();
+}
+
+void runHidlService() {
+    using namespace ::android;
 
     ProcessState::self()->startThreadPool();
-    // Extra threads may be needed to handle a stacked IPC sequence that
-    // contains alternating binder and hwbinder calls. (See b/35283480.)
-    hardware::configureRpcThreadpool(8, true /* callerWillJoin */);
+    hardware::configureRpcThreadpool(kThreadCount, true /* callerWillJoin */);
 
     // Create IComponentStore service.
     {
@@ -338,5 +382,20 @@ int main(int /* argc */, char** /* argv */) {
     }
 
     hardware::joinRpcThreadpool();
+}
+
+int main(int /* argc */, char** /* argv */) {
+    const bool aidlEnabled = ::aidl::android::hardware::media::c2::utils::IsSelected();
+    LOG(DEBUG) << "android.hardware.media.c2-ffmpeg" << (aidlEnabled ? "-V1" : "@1.2")
+               << "-service starting...";
+
+    // Set up minijail to limit system calls.
+    signal(SIGPIPE, SIG_IGN);
+    android::SetUpMinijail(kBaseSeccompPolicyPath, kExtSeccompPolicyPath);
+    if (aidlEnabled) {
+        runAidlService();
+    } else {
+        runHidlService();
+    }
     return 0;
 }
