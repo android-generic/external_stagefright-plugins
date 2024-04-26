@@ -18,12 +18,12 @@ LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
 include $(SF_COMMON_MK)
-LOCAL_MODULE := android.hardware.media.c2@1.2-ffmpeg-service
+LOCAL_MODULE := android.hardware.media.c2-ffmpeg-service
 LOCAL_MODULE_RELATIVE_PATH := hw
-LOCAL_VINTF_FRAGMENTS := manifest_media_c2_V1_2_ffmpeg.xml
-LOCAL_INIT_RC := android.hardware.media.c2@1.2-ffmpeg-service.rc
+LOCAL_VINTF_FRAGMENTS := manifest_media_c2_ffmpeg.xml
+LOCAL_INIT_RC := android.hardware.media.c2-ffmpeg-service.rc
 LOCAL_REQUIRED_MODULES := \
-	android.hardware.media.c2@1.2-ffmpeg.policy \
+	android.hardware.media.c2-ffmpeg.policy \
 	media_codecs_ffmpeg_c2.xml
 LOCAL_SRC_FILES := \
 	C2FFMPEGAudioDecodeComponent.cpp \
@@ -33,12 +33,15 @@ LOCAL_SRC_FILES := \
 	service.cpp
 LOCAL_SHARED_LIBRARIES := \
 	android.hardware.media.c2@1.2 \
+	android.hardware.media.c2-V1-ndk \
 	libavcodec \
 	libavfilter \
 	libavutil \
 	libavservices_minijail \
 	libbase \
 	libbinder \
+	libbinder_ndk \
+	libcodec2_aidl \
 	libcodec2_hidl@1.2 \
 	libcodec2_soft_common \
 	libcodec2_vndk \
@@ -52,18 +55,20 @@ LOCAL_SHARED_LIBRARIES := \
 ifeq ($(CONFIG_VAAPI),yes)
 LOCAL_SHARED_LIBRARIES += libva
 endif
+# TODO: Remove when flag is added by AOSP (maybe Android 15+?)
+LOCAL_CFLAGS += -Wno-deprecated-enum-enum-conversion
 include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)
-LOCAL_MODULE := android.hardware.media.c2@1.2-ffmpeg.policy
+LOCAL_MODULE := android.hardware.media.c2-ffmpeg.policy
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE_CLASS := ETC
 LOCAL_PROPRIETARY_MODULE := true
 LOCAL_MODULE_RELATIVE_PATH := seccomp_policy
-LOCAL_SRC_FILES_x86 := seccomp_policy/android.hardware.media.c2@1.2-ffmpeg-x86.policy
-LOCAL_SRC_FILES_x86_64 := seccomp_policy/android.hardware.media.c2@1.2-ffmpeg-x86_64.policy
-LOCAL_SRC_FILES_arm := seccomp_policy/android.hardware.media.c2@1.2-ffmpeg-arm.policy
-LOCAL_SRC_FILES_arm64 := seccomp_policy/android.hardware.media.c2@1.2-ffmpeg-arm64.policy
+LOCAL_SRC_FILES_x86 := seccomp_policy/android.hardware.media.c2-ffmpeg-x86.policy
+LOCAL_SRC_FILES_x86_64 := seccomp_policy/android.hardware.media.c2-ffmpeg-x86_64.policy
+LOCAL_SRC_FILES_arm := seccomp_policy/android.hardware.media.c2-ffmpeg-arm.policy
+LOCAL_SRC_FILES_arm64 := seccomp_policy/android.hardware.media.c2-ffmpeg-arm64.policy
 include $(BUILD_PREBUILT)
 
 include $(CLEAR_VARS)

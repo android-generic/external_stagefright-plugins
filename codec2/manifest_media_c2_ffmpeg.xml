@@ -14,6 +14,7 @@
      limitations under the License.
 -->
 <manifest version="1.0" type="device">
+    <!-- HIDL fragment -->
     <hal>
         <name>android.hardware.media.c2</name>
         <transport>hwbinder</transport>
@@ -22,5 +23,11 @@
             <name>IComponentStore</name>
             <instance>ffmpeg</instance>
         </interface>
+    </hal>
+    <!-- AIDL fragment -->
+    <hal format="aidl">
+        <name>android.hardware.media.c2</name>
+        <version>1</version>
+        <fqname>IComponentStore/ffmpeg</fqname>
     </hal>
 </manifest>
