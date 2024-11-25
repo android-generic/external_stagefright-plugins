@@ -50,6 +50,7 @@ LOCAL_SHARED_LIBRARIES := \
 	libswscale \
 	libutils
 ifeq ($(CONFIG_VAAPI),yes)
+LOCAL_HEADER_LIBRARIES := libva_headers
 LOCAL_SHARED_LIBRARIES += libva
 endif
 include $(BUILD_EXECUTABLE)
