@@ -72,5 +72,6 @@ gettid: 1
 sched_getaffinity: 1
 kcmp: 1
 sysinfo: 1
+mkdirat: 1
 
 @include /system/etc/seccomp_policy/crash_dump.x86.policy
