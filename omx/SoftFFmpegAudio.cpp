@@ -237,7 +237,7 @@ void SoftFFmpegAudio::deInitDecoder() {
         deinitVorbisHdr();
 
         if (mCodecAlreadyOpened) {
-            avcodec_close(mCtx);
+            avcodec_free_context(&mCtx);
             mCodecAlreadyOpened = false;
         }
         av_free(mCtx);
