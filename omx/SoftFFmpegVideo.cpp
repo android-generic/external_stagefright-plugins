@@ -173,7 +173,7 @@ void SoftFFmpegVideo::deInitDecoder() {
             mCtx->extradata_size = 0;
         }
         if (mCodecAlreadyOpened) {
-            avcodec_close(mCtx);
+            avcodec_free_context(&mCtx);
             mCodecAlreadyOpened = false;
         }
         ffmpeg_hwaccel_deinit(mCtx);
