@@ -107,14 +107,35 @@
         </MediaCodec>
         <MediaCodec name="c2.ffmpeg.h264.decoder"   type="video/avc">
             <Alias name="OMX.ffmpeg.h264.decoder" />
-            <Limit name="size" min="2x2" max="4080x4080" />
+            <Limit name="size" min="2x2" max="4096x4096" />
             <Limit name="alignment" value="2x2" />
+            <Limit name="block-size" value="16x16" />
+            <Limit name="blocks-per-second" range="24-2073600" />
+            <Limit name="bitrate" range="1-120000000" />
+            <Limit name="frame-rate" range="1-480" />
+            <Limit name="performance-point-3840x2160" value="30" />
+            <Limit name="measured-frame-rate-320x240" range="257-266" />
+            <Limit name="measured-frame-rate-720x480" range="262-264" />
+            <Limit name="measured-frame-rate-1280x720" range="227-251" />
+            <Limit name="measured-frame-rate-1920x1080" range="235-247" />
+            <Limit name="measured-frame-rate-3840x2160" range="90-120" />
             <Feature name="adaptive-playback" />
         </MediaCodec>
         <MediaCodec name="c2.ffmpeg.hevc.decoder"   type="video/hevc">
             <Alias name="OMX.ffmpeg.hevc.decoder" />
             <Limit name="size" min="2x2" max="4096x4096" />
             <Limit name="alignment" value="2x2" />
+            <Limit name="block-size" value="16x16" />
+            <Limit name="blocks-per-second" range="24-2073600" />
+            <Limit name="bitrate" range="1-120000000" />
+            <Limit name="frame-rate" range="1-480" />
+            <Limit name="performance-point-3840x2160" value="30" />
+            <Limit name="measured-frame-rate-320x240" range="257-400" />
+            <Limit name="measured-frame-rate-352x288" range="252-400" />
+            <Limit name="measured-frame-rate-720x480" range="262-264" />
+            <Limit name="measured-frame-rate-1280x720" range="227-251" />
+            <Limit name="measured-frame-rate-1920x1080" range="235-247" />
+            <Limit name="measured-frame-rate-3840x2160" range="90-120" />
             <Feature name="adaptive-playback" />
         </MediaCodec>
         <MediaCodec name="c2.ffmpeg.mpeg2.decoder"  type="video/mpeg2">
@@ -149,8 +170,18 @@
         </MediaCodec>
         <MediaCodec name="c2.ffmpeg.vp9.decoder"    type="video/x-vnd.on2.vp9">
             <Alias name="OMX.ffmpeg.vp9.decoder" />
-            <Limit name="size" min="2x2" max="2048x2048" />
+            <Limit name="size" min="2x2" max="3840x3840" />
             <Limit name="alignment" value="2x2" />
+            <Limit name="block-size" value="16x16" />
+            <Limit name="blocks-per-second" min="24" max="2073600" />
+            <Limit name="bitrate" range="1-120000000" />
+            <Limit name="frame-rate" range="1-480" />
+            <Limit name="performance-point-3840x2160" value="30" />
+            <Limit name="measured-frame-rate-320x180" range="300-400" />
+            <Limit name="measured-frame-rate-640x360" range="237-258" />
+            <Limit name="measured-frame-rate-1280x720" range="237-258" />
+            <Limit name="measured-frame-rate-1920x1080" range="100-120" />
+            <Limit name="measured-frame-rate-3840x2160" range="30-90" />
             <Feature name="adaptive-playback" />
         </MediaCodec>
         <MediaCodec name="c2.ffmpeg.vtrial.decoder" type="video/ffmpeg">
