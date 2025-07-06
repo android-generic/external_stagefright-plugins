@@ -1,5 +1,6 @@
 /*
  * Copyright 2022 Michael Goffioul <michael.goffioul@gmail.com>
+ * Copyright 2025 BlissLabs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,7 +44,7 @@ extern "C" {
 #define DEBUG_WORKQUEUE 0
 #define DEBUG_EXTRADATA 0
 
-#define ALIGN(A, B) (((A) + (B)-1) & ~((B)-1))
+#define ALIGN(A, B) (((A) + (B)-1) & ~(( B)-1))
 
 #define DEINTERLACE_MODE_NONE 0
 #define DEINTERLACE_MODE_SOFTWARE 1
@@ -88,7 +89,8 @@ C2FFMPEGVideoDecodeComponent::C2FFMPEGVideoDecodeComponent(
       mPacket(NULL),
       mCodecAlreadyOpened(false),
       mExtradataReady(false),
-      mEOSSignalled(false) {
+      mEOSSignalled(false),
+      mUtils(std::make_unique<C2FFMPEGVideoUtils>()) {
     ALOGD("C2FFMPEGVideoDecodeComponent: mediaType = %s", componentInfo->mediaType);
 }
 
@@ -603,11 +605,11 @@ std::shared_ptr<C2Buffer> C2FFMPEGVideoDecodeComponent::getOutputBuffer(const st
     std::shared_ptr<C2GraphicBlock> block;
     c2_status_t err;
 
-    err = pool->fetchGraphicBlock(ALIGN(mFrame->width, 16), ALIGN(mFrame->height, 2), HAL_PIXEL_FORMAT_YV12,
+    err = pool->fetchGraphicBlock(ALIGN(mFrame->width, 16), ALIGN(mFrame->height, 2), mUtils->getPixelFormat(false),
                                   { C2MemoryUsage::CPU_READ, C2MemoryUsage::CPU_WRITE }, &block);
     if (err != C2_OK) {
         ALOGE("getOutputBuffer: failed to fetch graphic block %d x %d (%#x) err = %d",
-              mFrame->width, mFrame->height, HAL_PIXEL_FORMAT_YV12, err);
+              mFrame->width, mFrame->height, mUtils->getPixelFormat(false), err);
         return NULL;
     }
 
@@ -624,21 +626,27 @@ std::shared_ptr<C2Buffer> C2FFMPEGVideoDecodeComponent::getOutputBuffer(const st
     C2PlanarLayout layout = wView.layout();
     struct SwsContext* currentImgConvertCtx = mImgConvertCtx;
 
-    data[0] = wView.data()[C2PlanarLayout::PLANE_Y];
-    data[1] = wView.data()[C2PlanarLayout::PLANE_U];
-    data[2] = wView.data()[C2PlanarLayout::PLANE_V];
-    linesize[0] = layout.planes[C2PlanarLayout::PLANE_Y].rowInc;
-    linesize[1] = layout.planes[C2PlanarLayout::PLANE_U].rowInc;
-    linesize[2] = layout.planes[C2PlanarLayout::PLANE_V].rowInc;
+    if (mUtils->getPixelFormat(false) == HAL_PIXEL_FORMAT_YV12) {
+        data[0] = wView.data()[C2PlanarLayout::PLANE_Y];
+        data[1] = wView.data()[C2PlanarLayout::PLANE_U];
+        data[2] = wView.data()[C2PlanarLayout::PLANE_V];
+        linesize[0] = layout.planes[C2PlanarLayout::PLANE_Y].rowInc;
+        linesize[1] = layout.planes[C2PlanarLayout::PLANE_U].rowInc;
+        linesize[2] = layout.planes[C2PlanarLayout::PLANE_V].rowInc;
+    } else {
+        data[0] = wView.data()[C2PlanarLayout::PLANE_R];
+        linesize[0] = layout.planes[C2PlanarLayout::PLANE_R].rowInc;
+        data[1] = data[2] = data[3] = nullptr;
+        linesize[1] = linesize[2] = linesize[3] = 0;
+    }
 
     mImgConvertCtx = sws_getCachedContext(currentImgConvertCtx,
            mFrame->width, mFrame->height, (AVPixelFormat)mFrame->format,
-           mFrame->width, mFrame->height, AV_PIX_FMT_YUV420P,
+           mFrame->width, mFrame->height, mUtils->getAVFormat(),
            SWS_BICUBIC, NULL, NULL, NULL);
     if (mImgConvertCtx && mImgConvertCtx != currentImgConvertCtx) {
         ALOGD("getOutputBuffer: created video converter - %s => %s",
-              av_get_pix_fmt_name((AVPixelFormat)mFrame->format), av_get_pix_fmt_name(AV_PIX_FMT_YUV420P));
-
+              av_get_pix_fmt_name((AVPixelFormat)mFrame->format), av_get_pix_fmt_name(mUtils->getAVFormat()));
     } else if (! mImgConvertCtx) {
         ALOGE("getOutputBuffer: cannot initialize the conversion context");
         return NULL;
@@ -647,7 +655,7 @@ std::shared_ptr<C2Buffer> C2FFMPEGVideoDecodeComponent::getOutputBuffer(const st
     sws_scale(mImgConvertCtx, mFrame->data, mFrame->linesize,
               0, mFrame->height, data, linesize);
 
-    return createGraphicBuffer(std::move(block), C2Rect(mFrame->width, mFrame->height));;
+    return createGraphicBuffer(std::move(block), C2Rect(mFrame->width, mFrame->height));
 }
 
 c2_status_t C2FFMPEGVideoDecodeComponent::reconfigureOutputDelay(std::vector<std::unique_ptr<C2Param>>& configUpdate) {
@@ -829,10 +837,10 @@ c2_status_t C2FFMPEGVideoDecodeComponent::outputFrame(
     }
 
 #if CONFIG_VAAPI
-    if (mFrame->format == AV_PIX_FMT_VAAPI && mIntf->getPixelFormat() != HAL_PIXEL_FORMAT_YCbCr_420_888) {
-        ALOGD("outputFrame: pixel format changed - %#x", HAL_PIXEL_FORMAT_YCbCr_420_888);
+    if (mFrame->format == AV_PIX_FMT_VAAPI && mIntf->getPixelFormat() != mUtils->getPixelFormat(true)) {
+        ALOGD("outputFrame: pixel format changed - %#x", mUtils->getPixelFormat(true));
 
-        C2StreamPixelFormatInfo::output format(0u, HAL_PIXEL_FORMAT_YCbCr_420_888);
+        C2StreamPixelFormatInfo::output format(0u, mUtils->getPixelFormat(true));
         std::vector<std::unique_ptr<C2SettingResult>> failures;
 
         err = mIntf->config({ &format }, C2_MAY_BLOCK, &failures);
@@ -1138,11 +1146,11 @@ int C2FFMPEGVideoDecodeComponent::getBufferVAAPI(AVHWFramesContext* hwfc, AVFram
 
     while (!block) {
         if (mAvailableSurfaces.empty()) {
-            err = mBlockPool->fetchGraphicBlock(mSurfaceWidth, mSurfaceHeight, HAL_PIXEL_FORMAT_YCbCr_420_888,
+            err = mBlockPool->fetchGraphicBlock(mSurfaceWidth, mSurfaceHeight, mUtils->getPixelFormat(true),
                                                 { mIntf->getConsumerUsage(), (uint64_t)BufferUsage::VIDEO_DECODER }, &block);
             if (err != C2_OK) {
                 ALOGE("getBufferVAAPI[%p]: failed to fetch graphic block %d x %d (%#x) err = %d",
-                      hwfc, mSurfaceWidth, mSurfaceHeight, HAL_PIXEL_FORMAT_YCbCr_420_888, err);
+                      hwfc, mSurfaceWidth, mSurfaceHeight, mUtils->getPixelFormat(true), err);
                 return AVERROR(ENOMEM);
             }
             desc.set(block);
@@ -1213,25 +1221,27 @@ int C2FFMPEGVideoDecodeComponent::getBufferVAAPI(AVHWFramesContext* hwfc, AVFram
             }
         };
 
-        descriptor.pixel_format = VA_FOURCC_NV12;
+        descriptor.pixel_format = mUtils->getVAFOURCCFormat();
         descriptor.width = mSurfaceWidth;
         descriptor.height = mSurfaceHeight;
         descriptor.num_buffers = 1;
         descriptor.buffers = &bufferPrimeFd;
         descriptor.flags = VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME;
-        descriptor.num_planes = 2;
+        descriptor.num_planes = (mUtils->getPixelFormat(false) == HAL_PIXEL_FORMAT_YV12) ? 2 : 1;
         descriptor.pitches[0] = desc.stride;
-        descriptor.pitches[1] = desc.stride;
+        descriptor.pitches[1] = (mUtils->getPixelFormat(false) == HAL_PIXEL_FORMAT_YV12) ? desc.stride : 0;
         descriptor.pitches[2] = 0;
         descriptor.pitches[3] = 0;
         descriptor.offsets[0] = 0;
-        descriptor.offsets[1] = desc.stride * ALIGN(desc.height, 32);
+        descriptor.offsets[1] = (mUtils->getPixelFormat(false) == HAL_PIXEL_FORMAT_YV12) ? desc.stride * ALIGN(desc.height, 32) : 0;
         descriptor.offsets[2] = 0;
         descriptor.offsets[3] = 0;
-        descriptor.data_size = descriptor.offsets[1] + desc.stride * ALIGN(desc.height / 2, 32);
+        descriptor.data_size = (mUtils->getPixelFormat(false) == HAL_PIXEL_FORMAT_YV12) ?
+            descriptor.offsets[1] + desc.stride * ALIGN(desc.height / 2, 32) :
+            desc.stride * desc.height;
         descriptor.private_data = NULL;
 
-        vas = vaCreateSurfaces(hwctx->display, VA_RT_FORMAT_YUV420,
+        vas = vaCreateSurfaces(hwctx->display, mUtils->getVAFormat(),
                                mSurfaceWidth, mSurfaceHeight, &surfaceId, 1, attributes, 2);
 
         if (vas != VA_STATUS_SUCCESS) {
@@ -1289,7 +1299,7 @@ void C2FFMPEGVideoDecodeComponent::releaseBufferVAAPI(VASurfaceID surfaceId) {
 
     if (p_it != mPendingSurfaces.end()) {
 #if DEBUG_FRAMES
-        ALOGD("releaseBufferVAAPI: pending block for surface %#x is now available.", surfaceId);
+    ALOGD("releaseBufferVAAPI: pending block for surface %#x is now available.", surfaceId);
 #endif
         mAvailableSurfaces.emplace(surfaceId, std::move(p_it->second));
         mPendingSurfaces.erase(p_it);

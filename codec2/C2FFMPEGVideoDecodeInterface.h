@@ -1,5 +1,6 @@
 /*
  * Copyright 2022 Michael Goffioul <michael.goffioul@gmail.com>
+ * Copyright 2025 BlissLabs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +20,7 @@
 
 #include <SimpleC2Interface.h>
 #include "C2FFMPEGCommon.h"
+#include "C2FFMPEGVideoUtils.h"
 
 namespace android {
 
@@ -56,6 +58,7 @@ private:
     std::shared_ptr<C2StreamPixelFormatInfo::output> mPixelFormat;
     std::shared_ptr<C2StreamRawCodecDataInfo::input> mRawCodecData;
     std::shared_ptr<C2StreamUsageTuning::output> mConsumerUsage;
+    std::unique_ptr<C2FFMPEGVideoUtils> mUtils;
 };
 
 } // namespace android

@@ -30,6 +30,7 @@ LOCAL_SRC_FILES := \
 	C2FFMPEGAudioDecodeInterface.cpp \
 	C2FFMPEGVideoDecodeComponent.cpp \
 	C2FFMPEGVideoDecodeInterface.cpp \
+	C2FFMPEGVideoUtils.cpp \
 	service.cpp
 LOCAL_SHARED_LIBRARIES := \
 	android.hardware.media.c2@1.2 \
