@@ -1,5 +1,6 @@
 /*
  * Copyright 2022 Michael Goffioul <michael.goffioul@gmail.com>
+ * Copyright 2025 BlissLabs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,7 +35,8 @@ C2FFMPEGVideoDecodeInterface::C2FFMPEGVideoDecodeInterface(
         componentInfo->name,
         C2Component::KIND_DECODER,
         C2Component::DOMAIN_VIDEO,
-        componentInfo->mediaType) {
+        componentInfo->mediaType),
+        mUtils(std::make_unique<C2FFMPEGVideoUtils>()) {
     noPrivateBuffers();
     noInputReferences();
     noOutputReferences();
@@ -214,17 +216,25 @@ C2FFMPEGVideoDecodeInterface::C2FFMPEGVideoDecodeInterface(
         }
     }
 
-    C2ChromaOffsetStruct locations[1] = { C2ChromaOffsetStruct::ITU_YUV_420_0() };
-    std::shared_ptr<C2StreamColorInfo::output> defaultColorInfo =
-        C2StreamColorInfo::output::AllocShared(
-                1u, 0u, 8u /* bitDepth */, C2Color::YUV_420);
-    memcpy(defaultColorInfo->m.locations, locations, sizeof(locations));
+    std::shared_ptr<C2StreamColorInfo::output> defaultColorInfo = nullptr;
 
-    defaultColorInfo =
-        C2StreamColorInfo::output::AllocShared(
-                { C2ChromaOffsetStruct::ITU_YUV_420_0() },
-                0u, 8u /* bitDepth */, C2Color::YUV_420);
-    helper->addStructDescriptors<C2ChromaOffsetStruct>();
+    if (mUtils->getPixelFormat(false) == HAL_PIXEL_FORMAT_YV12) {
+        C2ChromaOffsetStruct locations[1] = { C2ChromaOffsetStruct::ITU_YUV_420_0() };
+        defaultColorInfo =
+                C2StreamColorInfo::output::AllocShared(
+                        1u, 0u, 8u /* bitDepth */, C2Color::YUV_420);
+        memcpy(defaultColorInfo->m.locations, locations, sizeof(locations));
+
+        defaultColorInfo =
+                C2StreamColorInfo::output::AllocShared(
+                        { C2ChromaOffsetStruct::ITU_YUV_420_0() },
+                        0u, 8u /* bitDepth */, C2Color::YUV_420);
+    } else {
+        defaultColorInfo =
+                C2StreamColorInfo::output::AllocShared(
+                        0u, 0u, 8u /* bitDepth */, C2Color::RGB);
+        helper->addStructDescriptors<C2ChromaOffsetStruct>();
+    }
 
     addParameter(
             DefineParam(mColorInfo, C2_PARAMKEY_CODED_COLOR_INFO)
@@ -234,7 +244,7 @@ C2FFMPEGVideoDecodeInterface::C2FFMPEGVideoDecodeInterface(
     addParameter(
             DefineParam(mPixelFormat, C2_PARAMKEY_PIXEL_FORMAT)
             .withDefault(new C2StreamPixelFormatInfo::output(
-                                 0u, HAL_PIXEL_FORMAT_YV12))
+                                 0u, mUtils->getPixelFormat(false)))
             .withFields({C2F(mPixelFormat, value).any()})
             .withSetter(Setter<decltype(*mPixelFormat)>::StrictValueWithNoDeps)
             .build());

@@ -1,5 +1,6 @@
 /*
  * Copyright 2022 Michael Goffioul <michael.goffioul@gmail.com>
+ * Copyright 2025 BlissLabs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +24,7 @@
 #include <SimpleC2Component.h>
 #include "C2FFMPEGCommon.h"
 #include "C2FFMPEGVideoDecodeInterface.h"
+#include "C2FFMPEGVideoUtils.h"
 #if CONFIG_VAAPI
 #include <va/va.h>
 #endif
@@ -100,6 +102,7 @@ private:
     int mDeinterlaceMode;
     int mDeinterlaceIndicator;
     std::deque<PendingWork> mPendingWorkQueue;
+    std::unique_ptr<C2FFMPEGVideoUtils> mUtils;
 
 #if CONFIG_VAAPI
     struct SurfaceDescriptor {
