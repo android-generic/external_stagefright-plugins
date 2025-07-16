@@ -5,7 +5,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -32,6 +32,7 @@ enum class PixelFormatType {
     YUV_420,
     RGB_565,
     RGBX_8888,
+    BGRA_8888,
     UNKNOWN
 };
 
@@ -46,6 +47,7 @@ public:
     uint32_t getVAFOURCCFormat() const;
 #endif
     enum AVPixelFormat getAVFormat() const;
+    bool mSwapVAColorRGB;
 
 private:
     std::string mOverridePixelFormat;

@@ -633,6 +633,11 @@ std::shared_ptr<C2Buffer> C2FFMPEGVideoDecodeComponent::getOutputBuffer(const st
         linesize[0] = layout.planes[C2PlanarLayout::PLANE_Y].rowInc;
         linesize[1] = layout.planes[C2PlanarLayout::PLANE_U].rowInc;
         linesize[2] = layout.planes[C2PlanarLayout::PLANE_V].rowInc;
+    } else if (mUtils->getPixelFormat(false) == HAL_PIXEL_FORMAT_BGRA_8888) {
+        data[0] = wView.data()[C2PlanarLayout::PLANE_B];
+        linesize[0] = layout.planes[C2PlanarLayout::PLANE_B].rowInc;
+        data[1] = data[2] = data[3] = nullptr;
+        linesize[1] = linesize[2] = linesize[3] = 0;
     } else {
         data[0] = wView.data()[C2PlanarLayout::PLANE_R];
         linesize[0] = layout.planes[C2PlanarLayout::PLANE_R].rowInc;
