@@ -1561,6 +1561,8 @@ int C2FFMPEGVideoDecodeComponent::getBufferVAAPI(AVHWFramesContext* hwfc, AVFram
 }
 
 void C2FFMPEGVideoDecodeComponent::releaseBufferVAAPI(VASurfaceID surfaceId) {
+    if (mHeldSurfaces.size() == 0) return;
+
     auto it = mHeldSurfaces.find(surfaceId);
 
     if (it == mHeldSurfaces.end()) {
