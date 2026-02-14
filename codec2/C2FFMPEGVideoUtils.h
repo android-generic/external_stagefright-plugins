@@ -48,10 +48,10 @@ public:
 #endif
     enum AVPixelFormat getAVFormat() const;
     bool mSwapVAColorRGB;
+    PixelFormatType getPixelFormatType() const;
 
 private:
     std::string mOverridePixelFormat;
-    PixelFormatType getPixelFormatType() const;
 };
 
 } // namespace android
