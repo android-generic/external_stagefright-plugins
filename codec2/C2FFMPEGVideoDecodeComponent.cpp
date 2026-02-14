@@ -92,6 +92,12 @@ C2FFMPEGVideoDecodeComponent::C2FFMPEGVideoDecodeComponent(
       mEOSSignalled(false),
       mUtils(std::make_unique<C2FFMPEGVideoUtils>()) {
     ALOGD("C2FFMPEGVideoDecodeComponent: mediaType = %s", componentInfo->mediaType);
+#ifdef CONFIG_VAAPI
+    mVppConfigId = VA_INVALID_ID;
+    mVppContextId = VA_INVALID_ID;
+    mVppWidth = 0;
+    mVppHeight = 0;
+#endif
 }
 
 C2FFMPEGVideoDecodeComponent::~C2FFMPEGVideoDecodeComponent() {
@@ -244,6 +250,9 @@ void C2FFMPEGVideoDecodeComponent::deInitDecoder() {
     mBlockPool.reset();
     mSurfaceWidth = -1;
     mSurfaceHeight = -1;
+    bool isRGB = (mUtils->getPixelFormatType() != PixelFormatType::YUV_420);
+    if (isRGB && mUseDrmPrime) {
+        destroyVppContext();}
 #endif
 }
 
@@ -494,87 +503,301 @@ filterend:
     return C2_OK;
 }
 
+#ifdef CONFIG_VAAPI
+int C2FFMPEGVideoDecodeComponent::vaapi_vpp_convert(AVFrame *src, AVFrame *dst) {
+    if (src->format != AV_PIX_FMT_VAAPI || dst->format != AV_PIX_FMT_VAAPI)
+        return AVERROR(EINVAL);
+
+    AVHWFramesContext *hwfc = (AVHWFramesContext *)mCtx->hw_frames_ctx->data;
+    AVVAAPIDeviceContext *hwctx = (AVVAAPIDeviceContext *)hwfc->device_ctx->hwctx;
+    VADisplay display = hwctx->display;
+    VAStatus vas;
+
+    if (mVppWidth != dst->width || mVppHeight != dst->height || mVppContextId == VA_INVALID_ID) {
+        ALOGD("VPP: Init/Re-init context. Old: %dx%d, New: %dx%d", 
+              mVppWidth, mVppHeight, dst->width, dst->height);
+        
+        // Destroy old context if it exists (handles resolution switches)
+        destroyVppContext();
+        
+        // 1. Create Config
+        vas = vaCreateConfig(display, VAProfileNone, VAEntrypointVideoProc, NULL, 0, &mVppConfigId);
+        if (vas != VA_STATUS_SUCCESS) {
+            ALOGE("VPP: vaCreateConfig failed: %x", vas);
+            return AVERROR_EXTERNAL;
+        }
+
+        // 2. Create Context (Targeting the DESTINATION resolution)
+        vas = vaCreateContext(display, mVppConfigId, dst->width, dst->height, 
+                              VA_PROGRESSIVE, NULL, 0, &mVppContextId);
+        if (vas != VA_STATUS_SUCCESS) {
+            ALOGE("VPP: vaCreateContext failed: %x", vas);
+            destroyVppContext();
+            return AVERROR_EXTERNAL;
+        }
+        
+        // Update cached state
+        mVppWidth = dst->width;
+        mVppHeight = dst->height;
+    }
+
+    // 3. Prepare Surfaces
+    VASurfaceID src_surface = (VASurfaceID)(uintptr_t)src->data[3];
+    VASurfaceID dst_surface = (VASurfaceID)(uintptr_t)dst->data[3];
+
+    VARectangle src_rect = {0, 0, (uint16_t)src->width, (uint16_t)src->height};
+    VARectangle dst_rect = {0, 0, (uint16_t)dst->width, (uint16_t)dst->height};
+
+    // 4. Setup Pipeline Parameters
+    VAProcPipelineParameterBuffer params = {};
+    params.surface = src_surface;
+    params.surface_region = &src_rect;
+    params.output_region = &dst_rect;
+    params.output_background_color = 0xFF000000;
+    params.filter_flags = VA_FILTER_SCALING_DEFAULT;
+    // You can set this to VAProcColorStandardNone if colors look wrong
+    params.surface_color_standard = VAProcColorStandardBT709; 
+    params.output_color_standard = VAProcColorStandardNone;
+
+    VABufferID pipeline_buf = VA_INVALID_ID;
+    vas = vaCreateBuffer(display, mVppContextId, VAProcPipelineParameterBufferType, 
+                         sizeof(params), 1, &params, &pipeline_buf);
+    
+    if (vas != VA_STATUS_SUCCESS) {
+        ALOGE("VPP: vaCreateBuffer failed: %x", vas);
+        return AVERROR_EXTERNAL;
+    }
+
+    // 5. Execute Blit
+    vas = vaBeginPicture(display, mVppContextId, dst_surface);
+    if (vas == VA_STATUS_SUCCESS) {
+        vaRenderPicture(display, mVppContextId, &pipeline_buf, 1);
+        vas = vaEndPicture(display, mVppContextId);
+    }
+
+    // 6. Cleanup Per-Frame Resources
+    vaDestroyBuffer(display, pipeline_buf);
+
+    if (vas != VA_STATUS_SUCCESS) {
+        ALOGE("VPP: Blit execution failed: %x", vas);
+        return AVERROR_EXTERNAL;
+    }
+
+    return 0;
+}
+
+void C2FFMPEGVideoDecodeComponent::destroyVppContext() {
+    if (!mCtx || !mCtx->hw_frames_ctx) return;
+
+    AVHWFramesContext *hwfc = (AVHWFramesContext *)mCtx->hw_frames_ctx->data;
+    AVVAAPIDeviceContext *hwctx = (AVVAAPIDeviceContext *)hwfc->device_ctx->hwctx;
+    VADisplay display = hwctx->display;
+
+    if (mVppContextId != VA_INVALID_ID) {
+        vaDestroyContext(display, mVppContextId);
+        mVppContextId = VA_INVALID_ID;
+    }
+    if (mVppConfigId != VA_INVALID_ID) {
+        vaDestroyConfig(display, mVppConfigId);
+        mVppConfigId = VA_INVALID_ID;
+    }
+    mVppWidth = 0;
+    mVppHeight = 0;
+}
+#endif
+
 c2_status_t C2FFMPEGVideoDecodeComponent::receiveFrame(bool* hasPicture) {
-    int err = avcodec_receive_frame(mCtx, mFrame);
     c2_status_t c2err;
 
     *hasPicture = false;
-    if (err == 0) {
-#if DEBUG_FRAMES && CONFIG_VAAPI
-        if (mFrame->format == AV_PIX_FMT_VAAPI) {
-            ALOGD("receiveFrame: VASurfaceID = %p", mFrame->data[3]);
-        }
-#endif
-        // Update deinterlace indicator during the first 30 frames. We don't expect
-        // interlace status to change mid-stream, but there has been instances of progressive
-        // streams with sporadic interlaced frames. After the initial period, the interlace
-        // status is frozen.
-        if (mCtx->frame_num <= 30) {
-            mDeinterlaceIndicator += ((mFrame->flags & AV_FRAME_FLAG_INTERLACED) != 0 ? 1 : -1);
-#if DEBUG_FRAMES
-            ALOGD("receiveFrame: deinterlace indicator = %d", mDeinterlaceIndicator);
-#endif
-        } else if (mFilterGraph && mDeinterlaceIndicator < 0) {
-            // Deinterlace filter was incorrectly initialized.
-            ALOGW("receiveFrame: releasing deinterlace filter, as content is not interlaced");
-            av_freep(&mFilterGraph->opaque);
-            avfilter_graph_free(&mFilterGraph);
-            mFilterSrcCtx = mFilterSinkCtx = NULL;
-            mFilterInitialized = false;
-        }
-        // Handle deinterlace and HW frame download
-        // - if use HW deinterlace: deinterlace => download
-        // - else if use SW deinterlace: download => deinterlace
-        // - else: download
-        if (mDeinterlaceMode != DEINTERLACE_MODE_NONE && mDeinterlaceIndicator > 0) {
-            bool canDeinterlaceInHW =
 #if CONFIG_VAAPI
-                mFrame->format == AV_PIX_FMT_VAAPI ||
+    // Check if we are in the RGB Hardware mode
+    bool isRGB = (mUtils->getPixelFormatType() != PixelFormatType::YUV_420);
+
+    if (isRGB && mUseDrmPrime) {
+        AVFrame* tempFrame = av_frame_alloc();
+        int err = avcodec_receive_frame(mCtx, tempFrame);
+            if (err == 0) {
+                bool isHW = (tempFrame->format == AV_PIX_FMT_VAAPI);
+                if (isHW) {
+                    // --- TRUE HARDWARE VPP PATH ---
+                    
+                    // Prepare the Output RGB Frame (mFrame)
+                    // We reuse mFrame to hold the RGB Gralloc buffer
+                    av_frame_unref(mFrame); 
+                    
+                    // Manually allocate the RGB Buffer using our Gralloc Logic
+                    // We pass the decoder's hw_frames_ctx just to satisfy the API, 
+                    // but our getBufferVAAPI implementation ignores the format check 
+                    // and uses mUtils (RGB) anyway.
+                    AVHWFramesContext* frames_ctx = (AVHWFramesContext*)mCtx->hw_frames_ctx->data;
+                    int ret = getBufferVAAPI(frames_ctx, mFrame, true);
+
+                    if (ret >= 0) {
+                        // Manually attach the hardware frames context. 
+                        // This is required for getOutputBufferVAAPI to work later.
+                        mFrame->hw_frames_ctx = av_buffer_ref(mCtx->hw_frames_ctx);
+
+                        // Perform GPU VPP Blit (YUV Surface -> RGB Surface)
+                        // This calls the custom VA-API function we just wrote
+                        ret = vaapi_vpp_convert(tempFrame, mFrame);
+
+                        if (ret < 0) {
+                            ALOGE("VPP: GPU Blit failed: %d", ret);
+                            // If VPP fails, we can't really fallback easily without downloading.
+                            // For now, just mark no picture.
+                            *hasPicture = false;
+                        } else {
+                            // Success: Copy timestamps/metadata
+                            av_frame_copy_props(mFrame, tempFrame);
+                            *hasPicture = true;
+                        }
+                    } else {
+                        ALOGE("VPP: Failed to allocate RGB Gralloc buffer");
+                        *hasPicture = false;
+                    }
+
+                    // Clean up the internal YUV frame, we don't need it anymore
+                    av_frame_free(&tempFrame);
+                } else {
+                    // Move tempFrame to mFrame efficiently
+                    av_frame_move_ref(mFrame, tempFrame);
+                    av_frame_free(&tempFrame);
+
+                    //All comments are stripped, scroll down to see the details
+                    if (mCtx->frame_num <= 30) {
+                        mDeinterlaceIndicator += ((mFrame->flags & AV_FRAME_FLAG_INTERLACED) != 0 ? 1 : -1);
+#if DEBUG_FRAMES
+                        ALOGD("receiveFrame: deinterlace indicator = %d", mDeinterlaceIndicator);
 #endif
-                false;
-            // Check whether deinterlacing should be done in HW context
-            if (mDeinterlaceMode == DEINTERLACE_MODE_AUTO && canDeinterlaceInHW) {
-                c2err = deinterlaceFrame(hasPicture);
-                if (c2err == C2_OK && *hasPicture) {
-                    c2err = downloadFrame(false);
-                    if (c2err != C2_OK) {
-                        // Don't send error to client, skip frame!
-                        *hasPicture = false;
+                    } else if (mFilterGraph && mDeinterlaceIndicator < 0) {
+                        ALOGW("receiveFrame: releasing deinterlace filter, as content is not interlaced");
+                        av_freep(&mFilterGraph->opaque);
+                        avfilter_graph_free(&mFilterGraph);
+                        mFilterSrcCtx = mFilterSinkCtx = NULL;
+                        mFilterInitialized = false;
                     }
-                } else if (c2err != C2_OK) {
-                    // Don't send error to client, skip frame!
-                    *hasPicture = false;
+                    if (mDeinterlaceMode != DEINTERLACE_MODE_NONE && mDeinterlaceIndicator > 0) {
+                        bool canDeinterlaceInHW = false;
+                        if (mDeinterlaceMode == DEINTERLACE_MODE_AUTO && canDeinterlaceInHW) {
+                            c2err = deinterlaceFrame(hasPicture);
+                            if (c2err == C2_OK && *hasPicture) {
+                                c2err = downloadFrame(false);
+                                if (c2err != C2_OK) {
+                                    *hasPicture = false;
+                                }
+                            } else if (c2err != C2_OK) {
+                                *hasPicture = false;
+                            }
+                        } else {
+                            c2err = downloadFrame(true);
+                            if (c2err == C2_OK) {
+                                c2err = deinterlaceFrame(hasPicture);
+                                if (c2err != C2_OK) {
+                                    *hasPicture = false;
+                                }
+                            } else {
+                                *hasPicture = false;
+                            }
+                        }
+                    } else {
+                        c2err = downloadFrame(false);
+                        if (c2err == C2_OK) {
+                            *hasPicture = true;
+                        } else {
+                            *hasPicture = false;
+                        }
+                    }
                 }
+            } else {
+                // We must free the frame here!
+                av_frame_free(&tempFrame);
+
+                if (err != AVERROR(EAGAIN) && err != AVERROR_EOF) {
+                    ALOGE("receiveFrame: failed to receive frame: %s (%08x)", av_err2str(err), err);
+                }}
+    } else {
+#endif //CONFIG_VAAPI
+        int err = avcodec_receive_frame(mCtx, mFrame);
+        if (err == 0) {
+#if DEBUG_FRAMES && CONFIG_VAAPI
+            if (mFrame->format == AV_PIX_FMT_VAAPI) {
+                ALOGD("receiveFrame: VASurfaceID = %p", mFrame->data[3]);
             }
-            // Otherwise handle deinterlacing in SW context
-            // NOTE: Not sure whether sw-deinterlacer would handle y-tiled correctly, so don't use it.
-            else {
-                c2err = downloadFrame(true);
-                if (c2err == C2_OK) {
+#endif
+            // Update deinterlace indicator during the first 30 frames. We don't expect
+            // interlace status to change mid-stream, but there has been instances of progressive
+            // streams with sporadic interlaced frames. After the initial period, the interlace
+            // status is frozen.
+            if (mCtx->frame_num <= 30) {
+                mDeinterlaceIndicator += ((mFrame->flags & AV_FRAME_FLAG_INTERLACED) != 0 ? 1 : -1);
+#if DEBUG_FRAMES
+                ALOGD("receiveFrame: deinterlace indicator = %d", mDeinterlaceIndicator);
+#endif
+            } else if (mFilterGraph && mDeinterlaceIndicator < 0) {
+                // Deinterlace filter was incorrectly initialized.
+                ALOGW("receiveFrame: releasing deinterlace filter, as content is not interlaced");
+                av_freep(&mFilterGraph->opaque);
+                avfilter_graph_free(&mFilterGraph);
+                mFilterSrcCtx = mFilterSinkCtx = NULL;
+                mFilterInitialized = false;
+            }
+            // Handle deinterlace and HW frame download
+            // - if use HW deinterlace: deinterlace => download
+            // - else if use SW deinterlace: download => deinterlace
+            // - else: download
+            if (mDeinterlaceMode != DEINTERLACE_MODE_NONE && mDeinterlaceIndicator > 0) {
+                bool canDeinterlaceInHW =
+#if CONFIG_VAAPI
+                    mFrame->format == AV_PIX_FMT_VAAPI ||
+#endif
+                    false;
+                // Check whether deinterlacing should be done in HW context
+                if (mDeinterlaceMode == DEINTERLACE_MODE_AUTO && canDeinterlaceInHW) {
                     c2err = deinterlaceFrame(hasPicture);
-                    if (c2err != C2_OK) {
+                    if (c2err == C2_OK && *hasPicture) {
+                        c2err = downloadFrame(false);
+                        if (c2err != C2_OK) {
+                            // Don't send error to client, skip frame!
+                            *hasPicture = false;
+                        }
+                    } else if (c2err != C2_OK) {
                         // Don't send error to client, skip frame!
                         *hasPicture = false;
                     }
+                }
+                // Otherwise handle deinterlacing in SW context
+                // NOTE: Not sure whether sw-deinterlacer would handle y-tiled correctly, so don't use it.
+                else {
+                    c2err = downloadFrame(true);
+                    if (c2err == C2_OK) {
+                        c2err = deinterlaceFrame(hasPicture);
+                        if (c2err != C2_OK) {
+                            // Don't send error to client, skip frame!
+                            *hasPicture = false;
+                        }
+                    } else {
+                        // Don't send error to client, skip frame!
+                        *hasPicture = false;
+                    }
+                }
+            } else {
+                c2err = downloadFrame(false);
+                if (c2err == C2_OK) {
+                    *hasPicture = true;
                 } else {
                     // Don't send error to client, skip frame!
                     *hasPicture = false;
                 }
             }
-        } else {
-            c2err = downloadFrame(false);
-            if (c2err == C2_OK) {
-                *hasPicture = true;
-            } else {
-                // Don't send error to client, skip frame!
-                *hasPicture = false;
-            }
+        } else if (err != AVERROR(EAGAIN) && err != AVERROR_EOF) {
+            ALOGE("receiveFrame: failed to receive frame from decoder: %s (%08x)",
+                av_err2str(err), err);
+            // Don't report error to client.
         }
-    } else if (err != AVERROR(EAGAIN) && err != AVERROR_EOF) {
-        ALOGE("receiveFrame: failed to receive frame from decoder: %s (%08x)",
-              av_err2str(err), err);
-        // Don't report error to client.
+#if CONFIG_VAAPI
     }
+#endif
 
     return C2_OK;
 }
@@ -1136,10 +1359,24 @@ void C2FFMPEGVideoDecodeComponent::SurfaceDescriptor::set(const std::shared_ptr<
             &width, &height, &format, &usage, &stride, &generation, &igbpId, &igbpSlot);
 }
 
-int C2FFMPEGVideoDecodeComponent::getBufferVAAPI(AVHWFramesContext* hwfc, AVFrame* frame) {
+int C2FFMPEGVideoDecodeComponent::getBufferVAAPI(AVHWFramesContext* hwfc, AVFrame* frame, bool forceAllocator) {
     if (!mBlockPool) {
         ALOGE("getBufferVAAPIi[%p]: block pool does not exist.", hwfc);
         return AVERROR(ENOSYS);
+    }
+
+    // If we are in RGB mode, but the decoder asks for YUV, 
+    // we MUST return ENOSYS to let FFmpeg use its internal YUV pool for decoding.
+    if (!forceAllocator) { 
+        if (mUtils->getPixelFormatType() != PixelFormatType::YUV_420) {
+            if (hwfc->sw_format == AV_PIX_FMT_NV12 || 
+                hwfc->sw_format == AV_PIX_FMT_YUV420P ||
+                hwfc->sw_format == AV_PIX_FMT_P010) {
+                
+                ALOGV("getBufferVAAPI: Rejecting YUV request in RGB mode.");
+                return AVERROR(ENOSYS);
+            }
+        }
     }
 
     AVVAAPIDeviceContext* hwctx = (AVVAAPIDeviceContext*)hwfc->device_ctx->hwctx;
@@ -1172,16 +1409,23 @@ int C2FFMPEGVideoDecodeComponent::getBufferVAAPI(AVHWFramesContext* hwfc, AVFram
             if (s_it != mSurfaces.end()) {
                 auto h_it = mHeldSurfaces.find(s_it->second.surfaceId);
                 if (h_it != mHeldSurfaces.end()) {
-                    if (h_it->second || mPendingSurfaces.find(h_it->first) != mPendingSurfaces.end()) {
-                        LOG_ALWAYS_FATAL("getBufferVAAPI[%p]: surface %#x already has a graphic block.",
-                                         hwfc, h_it->first);
-                    } else {
-#if DEBUG_FRAMES
-                        ALOGD("getBufferVAAPI[%p]: saving pending block for surface %#x.",
+                    if (h_it->second) {
+                        // The driver is reusing a surface ID that we thought was still busy.
+                        // Trust the driver/FFmpeg and clear our stale reference.
+                        ALOGW("getBufferVAAPI[%p]: Surface %#x reused by driver, clearing stale block.", 
                               hwfc, h_it->first);
-#endif
-                        mPendingSurfaces.emplace(h_it->first, std::move(block));
+                        h_it->second.reset(); 
                     }
+
+                    if (mPendingSurfaces.find(h_it->first) != mPendingSurfaces.end()) {
+                         // Also clear pending if it exists
+                         mPendingSurfaces.erase(h_it->first);
+                    }
+#if DEBUG_FRAMES
+                    ALOGD("getBufferVAAPI[%p]: saving pending block for surface %#x.",
+                          hwfc, h_it->first);
+#endif
+                    mPendingSurfaces.emplace(h_it->first, std::move(block));
                 }
             }
         } else {
@@ -1234,24 +1478,39 @@ int C2FFMPEGVideoDecodeComponent::getBufferVAAPI(AVHWFramesContext* hwfc, AVFram
             }
         };
 
+        // Determine Bytes Per Pixel (BPP)
+        int bpp = 1;
+        uint32_t currentPixelFormat = mUtils->getPixelFormat(false);
+        
+        if (currentPixelFormat == HAL_PIXEL_FORMAT_RGBX_8888 || 
+            currentPixelFormat == HAL_PIXEL_FORMAT_BGRA_8888) {
+            bpp = 4;
+        } else if (currentPixelFormat == HAL_PIXEL_FORMAT_RGB_565) {
+            bpp = 2;
+        }
+
         descriptor.pixel_format = mUtils->getVAFOURCCFormat();
         descriptor.width = mSurfaceWidth;
         descriptor.height = mSurfaceHeight;
         descriptor.num_buffers = 1;
         descriptor.buffers = &bufferPrimeFd;
         descriptor.flags = VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME;
-        descriptor.num_planes = (mUtils->getPixelFormat(false) == HAL_PIXEL_FORMAT_YV12) ? 2 : 1;
-        descriptor.pitches[0] = desc.stride;
-        descriptor.pitches[1] = (mUtils->getPixelFormat(false) == HAL_PIXEL_FORMAT_YV12) ? desc.stride : 0;
+
+        bool isYUV = (currentPixelFormat == HAL_PIXEL_FORMAT_YV12);
+        descriptor.num_planes = isYUV ? 2 : 1;
+
+        descriptor.pitches[0] = desc.stride * bpp; 
+        descriptor.pitches[1] = isYUV ? desc.stride : 0;
         descriptor.pitches[2] = 0;
         descriptor.pitches[3] = 0;
         descriptor.offsets[0] = 0;
-        descriptor.offsets[1] = (mUtils->getPixelFormat(false) == HAL_PIXEL_FORMAT_YV12) ? desc.stride * ALIGN(desc.height, 32) : 0;
+        descriptor.offsets[1] = isYUV ? desc.stride * ALIGN(desc.height, 32) : 0;
         descriptor.offsets[2] = 0;
         descriptor.offsets[3] = 0;
-        descriptor.data_size = (mUtils->getPixelFormat(false) == HAL_PIXEL_FORMAT_YV12) ?
+
+        descriptor.data_size = isYUV ?
             descriptor.offsets[1] + desc.stride * ALIGN(desc.height / 2, 32) :
-            desc.stride * desc.height;
+            desc.stride * desc.height * bpp; // Multiply by bpp
         descriptor.private_data = NULL;
 
         vas = vaCreateSurfaces(hwctx->display, mUtils->getVAFormat(),
@@ -1300,7 +1559,8 @@ void C2FFMPEGVideoDecodeComponent::releaseBufferVAAPI(VASurfaceID surfaceId) {
     auto it = mHeldSurfaces.find(surfaceId);
 
     if (it == mHeldSurfaces.end()) {
-        LOG_ALWAYS_FATAL("releaseBufferVAAPI: invalid surface %#x.", surfaceId);
+        ALOGE("releaseBufferVAAPI: surface %#x not found (already released?)", surfaceId);
+        return;
     }
     mHeldSurfaces.erase(it);
 
@@ -1378,10 +1638,36 @@ static void freeVAAPIHWContextType(AVHWDeviceContext* ctx) {
     av_freep(&type);
 }
 
-static int framesInit(AVHWFramesContext* ctx) {
+static int framesInitYUV(AVHWFramesContext* ctx) {
     ctx->initial_pool_size = 0;
     ctx->pool = (AVBufferPool*)1;
     return 0;
+}
+
+static int framesInit(AVHWFramesContext* ctx) {
+    const FFHWDeviceContext* device_ctx_internal = (FFHWDeviceContext*)ctx->device_ctx;
+    const VAAPIHWContextType* type = (VAAPIHWContextType*)device_ctx_internal->hw_type;
+
+    // Call the original FFmpeg VAAPI frames_init.
+    // This creates the real AVBufferPool required for the decoder
+    // to allocate its own YUV surfaces when our get_buffer returns ENOSYS.
+    if (type->parent_hw_type && type->parent_hw_type->frames_init) {
+        return type->parent_hw_type->frames_init(ctx);
+    }
+
+    ctx->initial_pool_size = 0;
+    ctx->pool = (AVBufferPool*)1;
+    return 0;
+}
+
+static void framesUninit(AVHWFramesContext* ctx) {
+    const FFHWDeviceContext* device_ctx_internal = (FFHWDeviceContext*)ctx->device_ctx;
+    const VAAPIHWContextType* type = (VAAPIHWContextType*)device_ctx_internal->hw_type;
+
+    // Clean up the internal pool we allowed to be created
+    if (type->parent_hw_type && type->parent_hw_type->frames_uninit) {
+        type->parent_hw_type->frames_uninit(ctx);
+    }
 }
 
 void C2FFMPEGVideoDecodeComponent::openDecoderVAAPI() {
@@ -1391,8 +1677,13 @@ void C2FFMPEGVideoDecodeComponent::openDecoderVAAPI() {
 
     type->hw_type = *device_ctx_internal->hw_type;
     type->hw_type.frames_get_buffer = framesGetBufferVAAPI;
-    type->hw_type.frames_init = framesInit;
-    type->hw_type.frames_uninit = NULL;
+    if (mUseDrmPrime && mUtils->getPixelFormatType() != PixelFormatType::YUV_420) {
+        type->hw_type.frames_init = framesInit;
+        type->hw_type.frames_uninit = framesUninit;
+    } else {
+        type->hw_type.frames_init = framesInitYUV;
+        type->hw_type.frames_uninit = NULL;
+    }
     type->parent_hw_type = device_ctx_internal->hw_type;
     type->parent_free = device_ctx->free;
     type->component = this;
@@ -1404,7 +1695,17 @@ void C2FFMPEGVideoDecodeComponent::openDecoderVAAPI() {
 int C2FFMPEGVideoDecodeComponent::framesGetBufferVAAPI(AVHWFramesContext* ctx, AVFrame* frame) {
     const FFHWDeviceContext* device_ctx_internal = (FFHWDeviceContext*)ctx->device_ctx;
     const VAAPIHWContextType* type = (VAAPIHWContextType*)device_ctx_internal->hw_type;
-    return type->component->getBufferVAAPI(ctx, frame);
+
+    // Try to allocate using our custom logic (Gralloc)
+    int err = type->component->getBufferVAAPI(ctx, frame, false);
+
+    // If our component says "I don't handle this format" (ENOSYS), 
+    // fall back to the default FFmpeg VAAPI allocator.
+    if (err == AVERROR(ENOSYS) && type->component->mUtils->getPixelFormatType() != PixelFormatType::YUV_420) {
+        return type->parent_hw_type->frames_get_buffer(ctx, frame);
+    }
+
+    return err;
 }
 
 void C2FFMPEGVideoDecodeComponent::framesReleaseBufferVAAPI(void* opaque, uint8_t* data) {
