@@ -27,6 +27,7 @@
 #include "C2FFMPEGVideoUtils.h"
 #if CONFIG_VAAPI
 #include <va/va.h>
+#include <va/va_vpp.h>
 #endif
 
 extern "C" {
@@ -81,11 +82,20 @@ private:
 #ifdef CONFIG_VAAPI
     void openDecoderVAAPI();
     void deInitDecoderVAAPI();
-    int getBufferVAAPI(AVHWFramesContext* ctx, AVFrame* frame);
+    int getBufferVAAPI(AVHWFramesContext* ctx, AVFrame* frame, bool forceAllocator = false);
     void releaseBufferVAAPI(VASurfaceID surfaceId);
     std::shared_ptr<C2Buffer> getOutputBufferVAAPI();
     static int framesGetBufferVAAPI(AVHWFramesContext* ctx, AVFrame* frame);
     static void framesReleaseBufferVAAPI(void* opaque, uint8_t* data);
+
+    VAConfigID mVppConfigId = VA_INVALID_ID;
+    VAContextID mVppContextId = VA_INVALID_ID;
+    int32_t mVppWidth = 0;
+    int32_t mVppHeight = 0;
+    // Helper to clean up VPP resources
+    void destroyVppContext();    
+    // The optimized converter function
+    int vaapi_vpp_convert(AVFrame *src, AVFrame *dst);
 #endif
 
 private:
