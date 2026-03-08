@@ -35,6 +35,7 @@ typedef std::pair<uint64_t, uint64_t> PendingWork;
 
 class C2FFMPEGVideoDecodeComponent : public SimpleC2Component {
 public:
+    inline static bool mAV1CanUseHwaccel = true;
     explicit C2FFMPEGVideoDecodeComponent(
         const C2FFMPEGComponentInfo* componentInfo,
         const std::shared_ptr<C2FFMPEGVideoDecodeInterface>& intf);
