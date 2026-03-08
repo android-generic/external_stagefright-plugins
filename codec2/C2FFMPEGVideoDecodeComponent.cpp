@@ -168,7 +168,9 @@ c2_status_t C2FFMPEGVideoDecodeComponent::openDecoder() {
         mCtx->flags2 |= AV_CODEC_FLAG2_FAST;
     }
 
-    ffmpeg_hwaccel_init(mCtx);
+    if (mCtx->codec_id != AV_CODEC_ID_AV1 || C2FFMPEGVideoDecodeComponent::mAV1CanUseHwaccel) {
+        ffmpeg_hwaccel_init(mCtx);
+    }
 
 #if CONFIG_VAAPI
     if (mCtx->hw_device_ctx
@@ -297,6 +299,12 @@ c2_status_t C2FFMPEGVideoDecodeComponent::sendInputBuffer(
             // Frames must be read first, notify main decoding loop.
             ALOGD("sendInputBuffer: returning C2_BAD_STATE");
             return C2_BAD_STATE;
+        } else if (err == AVERROR(ENOSYS) && mCtx->codec_id == AV_CODEC_ID_AV1 && mCtx->hw_device_ctx) {
+            // AV1 HW decoding not supported, re-initialize decoder without VA-API
+            ALOGW("sendInputBuffer: AV1 hardware decoding not supported, re-initializing now");
+            C2FFMPEGVideoDecodeComponent::mAV1CanUseHwaccel = false;
+            onReset();
+            return C2_OMITTED;
         }
         // Otherwise don't send error to client.
     }

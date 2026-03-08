@@ -13,7 +13,8 @@ int ffmpeg_hwaccel_init(AVCodecContext *avctx) {
 
     // Find codec information. At this point, AVCodecContext.codec may not be
     // set yet, so retrieve our own version using AVCodecContext.codec_id.
-    const AVCodec* codec = avcodec_find_decoder(avctx->codec_id);
+    // FFmpeg prefers libdav1d for the AV1 encoder/decoder, force "av1" instead
+    const AVCodec* codec = avctx->codec_id == AV_CODEC_ID_AV1 ? avcodec_find_decoder_by_name("av1") : avcodec_find_decoder(avctx->codec_id);
     if (!codec) {
         ALOGE("ffmpeg_hwaccel_init: codec not found = %d", avctx->codec_id);
         return 0;
@@ -48,8 +49,11 @@ int ffmpeg_hwaccel_init(AVCodecContext *avctx) {
 
     if (!avctx->hw_device_ctx) {
         ALOGD("ffmpeg_hwaccel_init: no HW accel found for codec = %s", codec->name);
+        return 1;
     }
 
+    // Update decoder again in case avctx->codec_id == AV_CODEC_ID_AV1 and VA-API is working
+    avctx->codec = codec;
     return 0;
 }
 
