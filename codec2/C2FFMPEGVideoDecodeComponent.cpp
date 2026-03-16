@@ -223,6 +223,10 @@ void C2FFMPEGVideoDecodeComponent::deInitDecoder() {
         if (mCtx->hw_frames_ctx
                 && mCtx->pix_fmt == AV_PIX_FMT_VAAPI
                 && mUseDrmPrime) {
+            if (mUtils->getPixelFormatType() != PixelFormatType::YUV_420) {
+                destroyVppContext();
+            }
+
             deInitDecoderVAAPI();
         }
 #endif
@@ -250,9 +254,6 @@ void C2FFMPEGVideoDecodeComponent::deInitDecoder() {
     mBlockPool.reset();
     mSurfaceWidth = -1;
     mSurfaceHeight = -1;
-    bool isRGB = (mUtils->getPixelFormatType() != PixelFormatType::YUV_420);
-    if (isRGB && mUseDrmPrime) {
-        destroyVppContext();}
 #endif
 }
 
@@ -614,7 +615,9 @@ c2_status_t C2FFMPEGVideoDecodeComponent::receiveFrame(bool* hasPicture) {
     // Check if we are in the RGB Hardware mode
     bool isRGB = (mUtils->getPixelFormatType() != PixelFormatType::YUV_420);
 
-    if (isRGB && mUseDrmPrime) {
+    if (mCtx->hw_frames_ctx
+            && mUseDrmPrime
+            && isRGB) {
         AVFrame* tempFrame = av_frame_alloc();
         int err = avcodec_receive_frame(mCtx, tempFrame);
             if (err == 0) {
