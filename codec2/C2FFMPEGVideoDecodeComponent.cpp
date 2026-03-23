@@ -26,6 +26,8 @@
 #include "C2FFMPEGVideoDecodeComponent.h"
 #include "ffmpeg_hwaccel.h"
 #include <libavutil/mem.h>
+
+#include <cros_gralloc/cros_gralloc_handle.h>
 #ifdef CONFIG_VAAPI
 #include <C2AllocatorGralloc.h>
 #include <libavutil/hwcontext_internal.h>
@@ -1470,14 +1472,15 @@ int C2FFMPEGVideoDecodeComponent::getBufferVAAPI(AVHWFramesContext* hwfc, AVFram
     }
 
     if (s_it == mSurfaces.end()) {
-        uintptr_t bufferPrimeFd = block->handle()->data[0];
-        VASurfaceAttribExternalBuffers descriptor;
+        int bufferPrimeFd = static_cast<int>(block->handle()->data[0]);
+
+        VADRMPRIMESurfaceDescriptor descriptor;
         VASurfaceAttrib attributes[2] = {
             {
                 .type = VASurfaceAttribMemoryType,
                 .flags = VA_SURFACE_ATTRIB_SETTABLE,
                 .value.type = VAGenericValueTypeInteger,
-                .value.value.i = VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME,
+                .value.value.i = VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2,
             },
             {
                 .type = VASurfaceAttribExternalBufferDescriptor,
@@ -1487,40 +1490,59 @@ int C2FFMPEGVideoDecodeComponent::getBufferVAAPI(AVHWFramesContext* hwfc, AVFram
             }
         };
 
-        // Determine Bytes Per Pixel (BPP)
-        int bpp = 1;
-        uint32_t currentPixelFormat = mUtils->getPixelFormat(false);
-        
-        if (currentPixelFormat == HAL_PIXEL_FORMAT_RGBX_8888 || 
-            currentPixelFormat == HAL_PIXEL_FORMAT_BGRA_8888) {
-            bpp = 4;
-        } else if (currentPixelFormat == HAL_PIXEL_FORMAT_RGB_565) {
-            bpp = 2;
-        }
-
-        descriptor.pixel_format = mUtils->getVAFOURCCFormat();
+        descriptor.fourcc = mUtils->getVAFOURCCFormat();
         descriptor.width = mSurfaceWidth;
         descriptor.height = mSurfaceHeight;
-        descriptor.num_buffers = 1;
-        descriptor.buffers = &bufferPrimeFd;
-        descriptor.flags = VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME;
+        descriptor.num_objects = 1;
+        descriptor.num_layers = 1;
 
-        bool isYUV = (currentPixelFormat == HAL_PIXEL_FORMAT_YV12);
-        descriptor.num_planes = isYUV ? 2 : 1;
+        descriptor.objects[0].fd = bufferPrimeFd;
 
-        descriptor.pitches[0] = desc.stride * bpp; 
-        descriptor.pitches[1] = isYUV ? desc.stride : 0;
-        descriptor.pitches[2] = 0;
-        descriptor.pitches[3] = 0;
-        descriptor.offsets[0] = 0;
-        descriptor.offsets[1] = isYUV ? desc.stride * ALIGN(desc.height, 32) : 0;
-        descriptor.offsets[2] = 0;
-        descriptor.offsets[3] = 0;
+        if (mUtils->isGrallocMinigbm()) {
+            cros_gralloc_handle_t crosHandle = reinterpret_cast<cros_gralloc_handle_t>(block->handle());
 
-        descriptor.data_size = isYUV ?
-            descriptor.offsets[1] + desc.stride * ALIGN(desc.height / 2, 32) :
-            desc.stride * desc.height * bpp; // Multiply by bpp
-        descriptor.private_data = NULL;
+            descriptor.objects[0].fd = bufferPrimeFd;
+            descriptor.objects[0].size = crosHandle->total_size;
+            descriptor.objects[0].drm_format_modifier = crosHandle->format_modifier;
+
+            descriptor.layers[0].drm_format = crosHandle->format;
+            descriptor.layers[0].num_planes = crosHandle->num_planes;
+
+            memcpy(descriptor.layers[0].offset, crosHandle->offsets, sizeof(descriptor.layers[0].offset));
+            memcpy(descriptor.layers[0].pitch, crosHandle->strides, sizeof(descriptor.layers[0].pitch));
+        } else {
+            // Determine Bytes Per Pixel (BPP)
+            int bpp = 1;
+            uint32_t currentPixelFormat = mUtils->getPixelFormat(false);
+
+            if (currentPixelFormat == HAL_PIXEL_FORMAT_RGBX_8888 ||
+                currentPixelFormat == HAL_PIXEL_FORMAT_BGRA_8888) {
+                bpp = 4;
+            } else if (currentPixelFormat == HAL_PIXEL_FORMAT_RGB_565) {
+                bpp = 2;
+            }
+
+            bool isYUV = (currentPixelFormat == HAL_PIXEL_FORMAT_YV12);
+
+            // gbm does not support YUV, so always assume linear buffer
+            descriptor.objects[0].drm_format_modifier = 0;
+            descriptor.objects[0].fd = bufferPrimeFd;
+            descriptor.objects[0].size = isYUV ?
+                descriptor.layers[0].offset[1] + desc.stride * ALIGN(desc.height / 2, 32) :
+                desc.stride * desc.height * bpp; // Multiply by bpp
+
+            descriptor.layers[0].drm_format = mUtils->getDRMFOURCCFormat();
+            descriptor.layers[0].num_planes = isYUV ? 2 : 1;
+
+            descriptor.layers[0].pitch[0] = desc.stride * bpp;
+            descriptor.layers[0].pitch[1] = isYUV ? desc.stride : 0;
+            descriptor.layers[0].pitch[2] = 0;
+            descriptor.layers[0].pitch[3] = 0;
+            descriptor.layers[0].offset[0] = 0;
+            descriptor.layers[0].offset[1] = isYUV ? desc.stride * ALIGN(desc.height, 32) : 0;
+            descriptor.layers[0].offset[2] = 0;
+            descriptor.layers[0].offset[3] = 0;
+        }
 
         vas = vaCreateSurfaces(hwctx->display, mUtils->getVAFormat(),
                                mSurfaceWidth, mSurfaceHeight, &surfaceId, 1, attributes, 2);

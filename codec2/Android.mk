@@ -54,6 +54,7 @@ ifeq ($(CONFIG_VAAPI),yes)
 LOCAL_HEADER_LIBRARIES := libva_headers
 LOCAL_SHARED_LIBRARIES += libva
 endif
+LOCAL_C_INCLUDES += external/minigbm
 include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)
