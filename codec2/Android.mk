@@ -59,6 +59,7 @@ LOCAL_SHARED_LIBRARIES += libva
 endif
 # TODO: Remove when flag is added by AOSP (maybe Android 15+?)
 LOCAL_CFLAGS += -Wno-deprecated-enum-enum-conversion
+LOCAL_C_INCLUDES += external/minigbm
 include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)

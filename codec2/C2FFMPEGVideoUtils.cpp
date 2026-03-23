@@ -22,7 +22,12 @@ namespace android {
 
 C2FFMPEGVideoUtils::C2FFMPEGVideoUtils()
     : mSwapVAColorRGB(base::GetBoolProperty("persist.ffmpeg-codec2.vaapi_rgb_swap_color", false)),
-      mOverridePixelFormat(base::GetProperty("persist.ffmpeg-codec2.pixel_format", "YUV_420")) {
+      mOverridePixelFormat(base::GetProperty("persist.ffmpeg-codec2.pixel_format", "YUV_420")),
+      mGrallocName(base::GetProperty("ro.hardware.gralloc", "default")) {
+}
+
+bool C2FFMPEGVideoUtils::isGrallocMinigbm() const {
+    return (mGrallocName.find("minigbm") != std::string::npos);
 }
 
 PixelFormatType C2FFMPEGVideoUtils::getPixelFormatType() const {
@@ -87,6 +92,23 @@ uint32_t C2FFMPEGVideoUtils::getVAFOURCCFormat() const {
     return VA_FOURCC_NV12;
 }
 #endif
+
+uint32_t C2FFMPEGVideoUtils::getDRMFOURCCFormat() const {
+    switch (getPixelFormatType()) {
+        case PixelFormatType::YUV_420:
+            return DRM_FORMAT_NV12;
+        case PixelFormatType::RGB_565:
+            return DRM_FORMAT_RGB565;
+        case PixelFormatType::RGBX_8888:
+            return DRM_FORMAT_RGBX8888;
+        case PixelFormatType::BGRA_8888:
+            return DRM_FORMAT_BGRA8888;
+        case PixelFormatType::UNKNOWN:
+        default:
+            break;
+    }
+    return DRM_FORMAT_NV12;
+}
 
 enum AVPixelFormat C2FFMPEGVideoUtils::getAVFormat() const {
     switch (getPixelFormatType()) {
