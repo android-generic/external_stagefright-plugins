@@ -44,6 +44,7 @@ extern "C" {
 #include "libavutil/mem_internal.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
+#include "libavutil/mem.h"
 
 #include <system/audio.h>
 

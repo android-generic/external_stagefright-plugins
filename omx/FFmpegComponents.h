@@ -26,6 +26,7 @@
 #include "config.h"
 #include "libavformat/avformat.h"
 #include "libavcodec/avcodec.h"
+#include "libavutil/mem.h"
 
 namespace android {
 

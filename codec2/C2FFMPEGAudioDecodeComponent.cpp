@@ -20,6 +20,8 @@
 
 #include <SimpleC2Interface.h>
 #include "C2FFMPEGAudioDecodeComponent.h"
+
+#include <libavutil/mem.h>
 #include <libswresample/swresample_internal.h>
 
 #define DEBUG_FRAMES 0

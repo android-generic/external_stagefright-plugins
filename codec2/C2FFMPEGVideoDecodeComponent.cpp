@@ -25,6 +25,7 @@
 #include <SimpleC2Interface.h>
 #include "C2FFMPEGVideoDecodeComponent.h"
 #include "ffmpeg_hwaccel.h"
+#include <libavutil/mem.h>
 #ifdef CONFIG_VAAPI
 #include <C2AllocatorGralloc.h>
 #include <libavutil/hwcontext_internal.h>

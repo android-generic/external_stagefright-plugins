@@ -3,6 +3,7 @@
 #include "libavutil/display.h"
 #include "libavutil/eval.h"
 #include "libavutil/log.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavcodec/avcodec.h"
 #include "libavformat/avformat.h"
