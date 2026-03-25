@@ -23,6 +23,7 @@
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
+#include <libavutil/mem.h>
 }
 
 #include "ffmpeg_utils.h"

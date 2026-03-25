@@ -22,6 +22,7 @@
 #include "C2FFMPEGAudioDecodeComponent.h"
 
 extern "C"{
+#include <libavutil/mem.h>
 #include <libavutil/opt.h>
 #include <libswresample/swresample_internal.h>
 }
