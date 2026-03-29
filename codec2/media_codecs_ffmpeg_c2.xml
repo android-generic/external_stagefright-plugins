@@ -84,24 +84,28 @@
             <Limit name="size" min="2x2" max="2048x2048" />
             <Limit name="alignment" value="2x2" />
             <Feature name="adaptive-playback" />
+            <Feature name="low-latency" />
         </MediaCodec>
         <MediaCodec name="c2.ffmpeg.flv1.decoder"   type="video/x-flv">
             <Alias name="OMX.ffmpeg.flv1.decoder" />
             <Limit name="size" min="2x2" max="2048x2048" />
             <Limit name="alignment" value="2x2" />
             <Feature name="adaptive-playback" />
+            <Feature name="low-latency" />
         </MediaCodec>
         <MediaCodec name="c2.ffmpeg.av1.decoder"   type="video/av01">
             <Alias name="OMX.ffmpeg.av1.decoder" />
             <Limit name="size" min="2x2" max="2048x2048" />
             <Limit name="alignment" value="2x2" />
             <Feature name="adaptive-playback" />
+            <Feature name="low-latency" />
         </MediaCodec>
         <MediaCodec name="c2.ffmpeg.h263.decoder"   type="video/3gpp">
             <Alias name="OMX.ffmpeg.h263.decoder" />
             <Limit name="size" min="2x2" max="2048x2048" />
             <Limit name="alignment" value="2x2" />
             <Feature name="adaptive-playback" />
+            <Feature name="low-latency" />
         </MediaCodec>
         <MediaCodec name="c2.ffmpeg.h264.decoder"   type="video/avc">
             <Alias name="OMX.ffmpeg.h264.decoder" />
@@ -118,6 +122,7 @@
             <Limit name="measured-frame-rate-1920x1080" range="235-247" />
             <Limit name="measured-frame-rate-3840x2160" range="90-120" />
             <Feature name="adaptive-playback" />
+            <Feature name="low-latency" />
         </MediaCodec>
         <MediaCodec name="c2.ffmpeg.hevc.decoder"   type="video/hevc">
             <Alias name="OMX.ffmpeg.hevc.decoder" />
@@ -135,36 +140,42 @@
             <Limit name="measured-frame-rate-1920x1080" range="235-247" />
             <Limit name="measured-frame-rate-3840x2160" range="90-120" />
             <Feature name="adaptive-playback" />
+            <Feature name="low-latency" />
         </MediaCodec>
         <MediaCodec name="c2.ffmpeg.mpeg2.decoder"  type="video/mpeg2">
             <Alias name="OMX.ffmpeg.mpeg2.decoder" />
             <Limit name="size" min="2x2" max="2048x2048" />
             <Limit name="alignment" value="2x2" />
             <Feature name="adaptive-playback" />
+            <Feature name="low-latency" />
         </MediaCodec>
         <MediaCodec name="c2.ffmpeg.mpeg4.decoder"  type="video/mp4v-es">
             <Alias name="OMX.ffmpeg.mpeg4.decoder" />
             <Limit name="size" min="2x2" max="2048x2048" />
             <Limit name="alignment" value="2x2" />
             <Feature name="adaptive-playback" />
+            <Feature name="low-latency" />
         </MediaCodec>
         <MediaCodec name="c2.ffmpeg.rv.decoder"     type="video/vnd.rn-realvideo">
             <Alias name="OMX.ffmpeg.rv.decoder" />
             <Limit name="size" min="2x2" max="2048x2048" />
             <Limit name="alignment" value="2x2" />
             <Feature name="adaptive-playback" />
+            <Feature name="low-latency" />
         </MediaCodec>
         <MediaCodec name="c2.ffmpeg.vc1.decoder"    type="video/vc1">
             <Alias name="OMX.ffmpeg.vc1.decoder" />
             <Limit name="size" min="2x2" max="2048x2048" />
             <Limit name="alignment" value="2x2" />
             <Feature name="adaptive-playback" />
+            <Feature name="low-latency" />
         </MediaCodec>
         <MediaCodec name="c2.ffmpeg.vp8.decoder"    type="video/x-vnd.on2.vp8">
             <Alias name="OMX.ffmpeg.vp8.decoder" />
             <Limit name="size" min="2x2" max="2048x2048" />
             <Limit name="alignment" value="2x2" />
             <Feature name="adaptive-playback" />
+            <Feature name="low-latency" />
         </MediaCodec>
         <MediaCodec name="c2.ffmpeg.vp9.decoder"    type="video/x-vnd.on2.vp9">
             <Alias name="OMX.ffmpeg.vp9.decoder" />
@@ -181,18 +192,21 @@
             <Limit name="measured-frame-rate-1920x1080" range="100-120" />
             <Limit name="measured-frame-rate-3840x2160" range="30-90" />
             <Feature name="adaptive-playback" />
+            <Feature name="low-latency" />
         </MediaCodec>
         <MediaCodec name="c2.ffmpeg.vtrial.decoder" type="video/ffmpeg">
             <Alias name="OMX.ffmpeg.vtrial.decoder" />
             <Limit name="size" min="2x2" max="2048x2048" />
             <Limit name="alignment" value="2x2" />
             <Feature name="adaptive-playback" />
+            <Feature name="low-latency" />
         </MediaCodec>
         <MediaCodec name="c2.ffmpeg.wmv.decoder"    type="video/x-ms-wmv">
             <Alias name="OMX.ffmpeg.wmv.decoder" />
             <Limit name="size" min="2x2" max="2048x2048" />
             <Limit name="alignment" value="2x2" />
             <Feature name="adaptive-playback" />
+            <Feature name="low-latency" />
         </MediaCodec>
     </Decoders>
 </MediaCodecs>
